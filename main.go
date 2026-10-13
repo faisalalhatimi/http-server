@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 )
 
@@ -57,6 +58,25 @@ func respondWithError(w http.ResponseWriter, code int, msg string) {
 	respondWithJSON(w, code, errorResponse{Error: msg})
 }
 
+func replaceProfane(original string) string {
+	profane := map[string]struct{}{
+		"kerfuffle": {},
+		"sharbert":  {},
+		"fornax":    {},
+	}
+
+	words := strings.Split(original, " ")
+
+	for i, word := range words {
+		lowerd := strings.ToLower(word)
+		if _, ok := profane[lowerd]; ok {
+			words[i] = "****"
+		}
+	}
+
+	return strings.Join(words, " ")
+}
+
 func jsonHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Body string `json:"body"`
@@ -73,10 +93,12 @@ func jsonHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s := replaceProfane(params.Body)
+
 	type response struct {
-		Valid bool `json:"valid"`
+		Body string `json:"cleaned_body"`
 	}
-	respondWithJSON(w, http.StatusOK, response{Valid: true})
+	respondWithJSON(w, http.StatusOK, response{Body: s})
 }
 
 func main() {
