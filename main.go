@@ -1,12 +1,17 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/faisalalhatimi/http-server/internal/database"
+	_ "github.com/lib/pq"
 )
 
 func statusHandler(w http.ResponseWriter, r *http.Request) {
@@ -17,6 +22,7 @@ func statusHandler(w http.ResponseWriter, r *http.Request) {
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	db             *database.Queries
 }
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -102,7 +108,17 @@ func jsonHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	apiCfg := &apiConfig{}
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Printf("Database Error: %s", err)
+	}
+	dbQueries := database.New(db)
+
+	apiCfg := &apiConfig{
+		db: dbQueries,
+	}
+
 	port := "8080"
 	fileServer := http.FileServer(http.Dir("."))
 
