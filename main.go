@@ -31,7 +31,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app", fileServer)))
 	mux.HandleFunc("GET /api/healthz", statusHandler)
-	mux.HandleFunc("POST /api/validate_chirp", jsonHandler)
+	mux.HandleFunc("POST /api/chirps", apiCfg.addChirpHandler)
 	mux.HandleFunc("POST /api/users", apiCfg.addUserHandler)
 
 	// Admin Endpoints

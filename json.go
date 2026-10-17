@@ -45,27 +45,3 @@ func replaceProfane(original string) string {
 
 	return strings.Join(words, " ")
 }
-
-func jsonHandler(w http.ResponseWriter, r *http.Request) {
-	type parameters struct {
-		Body string `json:"body"`
-	}
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-	if err := decoder.Decode(&params); err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
-		return
-	}
-
-	if len(params.Body) > 140 {
-		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
-		return
-	}
-
-	s := replaceProfane(params.Body)
-
-	type response struct {
-		Body string `json:"cleaned_body"`
-	}
-	respondWithJSON(w, http.StatusOK, response{Body: s})
-}
