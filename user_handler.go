@@ -16,6 +16,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
+	Token     string    `json:"token"`
 }
 
 func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -61,8 +62,9 @@ func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	type requestBody struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email      string `json:"email"`
+		Password   string `json:"password"`
+		Expiration *int   `json:"expire_in_seconds"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -71,6 +73,15 @@ func (cfg *apiConfig) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		log.Printf("Decoder Error: %s", err)
 		return
+	}
+
+	defaultExperation := time.Hour
+	requestedTime := defaultExperation
+	if rq.Expiration != nil {
+		requestedTime = time.Duration(*rq.Expiration) * time.Second
+	}
+	if requestedTime > defaultExperation {
+		requestedTime = defaultExperation
 	}
 
 	dbUser, err := cfg.db.GetUser(r.Context(), rq.Email)
@@ -89,7 +100,14 @@ func (cfg *apiConfig) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	if match == false {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
-		log.Printf("Invalid Password")
+		log.Print("Invalid Password")
+		return
+	}
+
+	token, err := auth.MakeJWT(dbUser.ID, cfg.jwtSecret, requestedTime)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		log.Printf("Token couldn't be generated: %s", err)
 		return
 	}
 
@@ -98,6 +116,7 @@ func (cfg *apiConfig) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: dbUser.CreatedAt,
 		UpdatedAt: dbUser.UpdatedAt,
 		Email:     dbUser.Email,
+		Token:     token,
 	}
 	respondWithJSON(w, http.StatusOK, response)
 }

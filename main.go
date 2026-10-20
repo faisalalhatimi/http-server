@@ -21,8 +21,9 @@ func main() {
 	dbQueries := database.New(db)
 
 	apiCfg := &apiConfig{
-		db:       dbQueries,
-		platform: os.Getenv("PLATFORM"),
+		db:        dbQueries,
+		platform:  os.Getenv("PLATFORM"),
+		jwtSecret: os.Getenv("JWS_SECRET"),
 	}
 
 	port := "8080"
