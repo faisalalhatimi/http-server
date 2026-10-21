@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -12,11 +13,21 @@ import (
 )
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-	Token     string    `json:"token"`
+	ID           uuid.UUID `json:"id"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	AccessToken  string    `json:"token"`
+	RefreshToken string    `json:"refresh_token"`
+}
+
+type RefreshToken struct {
+	Token     string       `json:"token"`
+	CreatedAt time.Time    `json:"created_at"`
+	UpdatedAt time.Time    `json:"updated_at"`
+	UserID    uuid.UUID    `json:"user_id"`
+	ExpiresAt time.Time    `json:"expires_at"`
+	RevokedAt sql.NullTime `json:"revoked_at"`
 }
 
 func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -62,9 +73,8 @@ func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	type requestBody struct {
-		Email      string `json:"email"`
-		Password   string `json:"password"`
-		Expiration *int   `json:"expire_in_seconds"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -73,15 +83,6 @@ func (cfg *apiConfig) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		log.Printf("Decoder Error: %s", err)
 		return
-	}
-
-	defaultExperation := time.Hour
-	requestedTime := defaultExperation
-	if rq.Expiration != nil {
-		requestedTime = time.Duration(*rq.Expiration) * time.Second
-	}
-	if requestedTime > defaultExperation {
-		requestedTime = defaultExperation
 	}
 
 	dbUser, err := cfg.db.GetUser(r.Context(), rq.Email)
@@ -104,19 +105,75 @@ func (cfg *apiConfig) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := auth.MakeJWT(dbUser.ID, cfg.jwtSecret, requestedTime)
+	accessToken, err := auth.MakeJWT(dbUser.ID, cfg.jwtSecret, time.Hour)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		log.Printf("Token couldn't be generated: %s", err)
 		return
 	}
 
+	dbToken, err := cfg.db.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:     auth.MakeRefreshToken(),
+		UserID:    dbUser.ID,
+		ExpiresAt: time.Now().UTC().Add((time.Hour * 24) * 60),
+		RevokedAt: sql.NullTime{},
+	})
+
 	response := User{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     dbUser.Email,
-		Token:     token,
+		ID:           dbUser.ID,
+		CreatedAt:    dbUser.CreatedAt,
+		UpdatedAt:    dbUser.UpdatedAt,
+		Email:        dbUser.Email,
+		AccessToken:  accessToken,
+		RefreshToken: dbToken.Token,
 	}
 	respondWithJSON(w, http.StatusOK, response)
+}
+
+func (cfg *apiConfig) refreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+
+	refreshToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "User not Authorised")
+		return
+	}
+
+	dbToken, err := cfg.db.GetUserFromRefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "User not Authorised")
+		log.Printf("Token Error: %s", err)
+		return
+	}
+
+	accessToken, err := auth.MakeJWT(dbToken, cfg.jwtSecret, time.Hour)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		log.Printf("Token couldn't be generated: %s", err)
+		return
+	}
+
+	type responeBody struct {
+		AccessToken string `json:"token"`
+	}
+	response := responeBody{
+		AccessToken: accessToken,
+	}
+	respondWithJSON(w, http.StatusOK, response)
+}
+
+func (cfg *apiConfig) revokeRefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
+	refreshToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "User not Authorised")
+		log.Printf("Token Error: %s", err)
+		return
+	}
+
+	err = cfg.db.RevokeRefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		log.Printf("Database Error: %s", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

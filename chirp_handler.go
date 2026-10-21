@@ -53,7 +53,7 @@ func (cfg *apiConfig) addChirpHandler(w http.ResponseWriter, r *http.Request) {
 		UserID: userID,
 	})
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Something went wrong DB")
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		log.Printf("Database Error: %s", err)
 		return
 	}
