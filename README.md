@@ -26,7 +26,6 @@ The goal of this project is to learn backend development by building an HTTP ser
 
 - Go
 - PostgreSQL
-- Git
 
 ## Installation
 
