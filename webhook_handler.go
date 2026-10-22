@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/faisalalhatimi/http-server/internal/auth"
 	"github.com/google/uuid"
 )
 
@@ -27,12 +28,24 @@ func (cfg *apiConfig) webhookHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	apiKey, err := auth.GetAPIKEY(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Key not found")
+		log.Printf("API Key Error: %s", err)
+		return
+	}
+
+	if apiKey != cfg.polkAPIKEY {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	if webhook.Event != "user.upgraded" {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	err := cfg.db.UpgreadUser(r.Context(), webhook.Data.UserID)
+	err = cfg.db.UpgreadUser(r.Context(), webhook.Data.UserID)
 	if err != nil {
 		respondWithError(w, http.StatusNotFound, "User not Found")
 		log.Printf("Database Error: %s", err)
