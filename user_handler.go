@@ -30,28 +30,28 @@ type RefreshToken struct {
 	RevokedAt sql.NullTime `json:"revoked_at"`
 }
 
-func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) {
 
-	type requestBody struct {
+	type parameters struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 	decoder := json.NewDecoder(r.Body)
-	rq := requestBody{}
-	if err := decoder.Decode(&rq); err != nil {
+	params := parameters{}
+	if err := decoder.Decode(&params); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
-		log.Printf("Database Error: %s", err)
+		log.Printf("Decoder Error: %s", err)
 		return
 	}
 
-	hashed_password, err := auth.HashPassword(rq.Password)
+	hashed_password, err := auth.HashPassword(params.Password)
 	if err != nil {
 		log.Printf("Hashing Error: %s", err)
 		return
 	}
 
 	dbUser, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
-		Email:          rq.Email,
+		Email:          params.Email,
 		HashedPassword: hashed_password,
 	})
 	if err != nil {
@@ -68,6 +68,67 @@ func (cfg *apiConfig) addUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusCreated, responseUser)
+}
+
+func (cfg *apiConfig) updateUserHandler(w http.ResponseWriter, r *http.Request) {
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Token not Found")
+		log.Printf("Token Error: %s", err)
+		return
+	}
+
+	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Invalid Token")
+		log.Printf("Token Error: %s", err)
+		return
+	}
+
+	type parameters struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	if err := decoder.Decode(&params); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		log.Printf("Decoder Error: %s", err)
+		return
+	}
+
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
+		log.Printf("Hahsing Error: %s", err)
+		return
+	}
+
+	updatedUser, err := cfg.db.UpdateUser(r.Context(), database.UpdateUserParams{
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
+		ID:             userID,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't update user")
+		log.Printf("Database Error: %s", err)
+	}
+
+	type responseBody struct {
+		ID        uuid.UUID `json:"user_id"`
+		Email     string    `json:"email"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"update_at"`
+	}
+
+	response := responseBody{
+		ID:        updatedUser.ID,
+		Email:     updatedUser.Email,
+		CreatedAt: updatedUser.CreatedAt,
+		UpdatedAt: updatedUser.UpdatedAt,
+	}
+	respondWithJSON(w, http.StatusOK, response)
 }
 
 func (cfg *apiConfig) userLoginHandler(w http.ResponseWriter, r *http.Request) {
