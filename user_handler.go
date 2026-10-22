@@ -19,6 +19,7 @@ type User struct {
 	Email        string    `json:"email"`
 	AccessToken  string    `json:"token"`
 	RefreshToken string    `json:"refresh_token"`
+	IsChirpyRed  bool      `json:"is_chirpy_red"`
 }
 
 type RefreshToken struct {
@@ -61,10 +62,11 @@ func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	responseUser := User{
-		ID:        dbUser.ID,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
-		Email:     dbUser.Email,
+		ID:          dbUser.ID,
+		CreatedAt:   dbUser.CreatedAt,
+		UpdatedAt:   dbUser.UpdatedAt,
+		Email:       dbUser.Email,
+		IsChirpyRed: dbUser.IsChirpyRed,
 	}
 
 	respondWithJSON(w, http.StatusCreated, responseUser)
@@ -115,45 +117,39 @@ func (cfg *apiConfig) updateUserHandler(w http.ResponseWriter, r *http.Request) 
 		log.Printf("Database Error: %s", err)
 	}
 
-	type responseBody struct {
-		ID        uuid.UUID `json:"user_id"`
-		Email     string    `json:"email"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"update_at"`
-	}
-
-	response := responseBody{
-		ID:        updatedUser.ID,
-		Email:     updatedUser.Email,
-		CreatedAt: updatedUser.CreatedAt,
-		UpdatedAt: updatedUser.UpdatedAt,
+	response := User{
+		ID:          updatedUser.ID,
+		Email:       updatedUser.Email,
+		CreatedAt:   updatedUser.CreatedAt,
+		UpdatedAt:   updatedUser.UpdatedAt,
+		IsChirpyRed: updatedUser.IsChirpyRed,
 	}
 	respondWithJSON(w, http.StatusOK, response)
 }
 
 func (cfg *apiConfig) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 
-	type requestBody struct {
+	type parameters struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
-	rq := requestBody{}
-	if err := decoder.Decode(&rq); err != nil {
+	params := parameters{}
+	if err := decoder.Decode(&params); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		log.Printf("Decoder Error: %s", err)
 		return
 	}
 
-	dbUser, err := cfg.db.GetUser(r.Context(), rq.Email)
+	dbUser, err := cfg.db.GetUser(r.Context(), params.Email)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
 		log.Printf("Database Error: %s", err)
 		return
 	}
 
-	match, err := auth.CheckPasswordHash(rq.Password, dbUser.HashedPassword)
+	match, err := auth.CheckPasswordHash(params.Password, dbUser.HashedPassword)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Something went wrong")
 		log.Printf("Hashing Error: %s", err)
@@ -187,6 +183,7 @@ func (cfg *apiConfig) userLoginHandler(w http.ResponseWriter, r *http.Request) {
 		Email:        dbUser.Email,
 		AccessToken:  accessToken,
 		RefreshToken: dbToken.Token,
+		IsChirpyRed:  dbUser.IsChirpyRed,
 	}
 	respondWithJSON(w, http.StatusOK, response)
 }

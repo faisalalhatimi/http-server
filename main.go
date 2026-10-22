@@ -33,16 +33,21 @@ func main() {
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app", fileServer)))
 	mux.HandleFunc("GET /api/healthz", statusHandler)
 
+	// Users Endpoints
 	mux.HandleFunc("POST /api/users", apiCfg.createUserHandler)
 	mux.HandleFunc("PUT /api/users", apiCfg.updateUserHandler)
 	mux.HandleFunc("POST /api/login", apiCfg.userLoginHandler)
 	mux.HandleFunc("POST /api/refresh", apiCfg.refreshTokenHandler)
 	mux.HandleFunc("POST /api/revoke", apiCfg.revokeRefreshTokenHandler)
 
+	// Chirps Endpoints
 	mux.HandleFunc("POST /api/chirps", apiCfg.addChirpHandler)
 	mux.HandleFunc("GET /api/chirps", apiCfg.getChirpsHandler)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.getChirpHandler)
 	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.deleteChripHandler)
+
+	// Webhooks Endpoints
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.webhookHandler)
 
 	// Admin Endpoints
 	mux.HandleFunc("GET /admin/metrics", apiCfg.metricsHandler)
