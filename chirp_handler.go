@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/faisalalhatimi/http-server/internal/auth"
@@ -70,14 +71,19 @@ func (cfg *apiConfig) addChirpHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
-	authorIDString := r.URL.Query().Get("author_id")
-	authorID, err := uuid.Parse(authorIDString)
-	if err != nil {
-		log.Printf("Parsing Error: %s", err)
-		return
-	}
 
+	var authorID uuid.UUID
+	var err error
 	var dbChirps []database.Chirp
+
+	authorIDString := r.URL.Query().Get("author_id")
+	if authorIDString != "" {
+		authorID, err = uuid.Parse(authorIDString)
+		if err != nil {
+			log.Printf("Parsing Error: %s", err)
+			return
+		}
+	}
 
 	if authorIDString != "" {
 		dbChirps, err = cfg.db.GetChirpsByAuthor(r.Context(), authorID)
@@ -101,6 +107,19 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 			UserID:    dbChirp.UserID,
 		})
 	}
+
+	sortDirection := "asc"
+	sortParam := r.URL.Query().Get("sort")
+	if sortParam == "desc" {
+		sortDirection = "desc"
+	}
+	sort.Slice(chirps, func(i, j int) bool {
+		if sortDirection == "desc" {
+			return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
+		}
+		return chirps[i].CreatedAt.Before(chirps[j].CreatedAt)
+	})
+
 	respondWithJSON(w, http.StatusOK, chirps)
 }
 
